@@ -2,22 +2,79 @@ import { useState } from "react";
 import "./chat.css";
 import EmojiPicker from "emoji-picker-react";
 import{ useRef, useEffect } from 'react';
-
+import {arrayUnion, doc,getDoc,onSnapshot, updateDoc} from "firebase/firestore";
+import {db}from "../../lib/firebase";
+import { useChatStore } from "../../lib/chatStore";
+import { useUserStore } from "../../lib/userStore";
 
 const Chat = () => {
+  const [chat,setChat]=useState();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
-
+  
+  const {chatId,user}= useChatStore();
+  const {currentUser}= useUserStore();
   const endRef= useRef(null)
 
   useEffect(()=>{
     endRef.current?.scrollIntoView({behaviour:"smooth"});
-  },[])
+  },[]);
+
+useEffect(()=>{
+  const unSub =onSnapshot(doc(db,"chats",chatId),(res)=>{
+    setChat(res.data());
+  });
+  return ()=>{
+    unSub();
+  };
+},[chatId]);
+
 
   const handleEmoji = (e) => {
    setText((prev)=>prev+e.emoji);
    setOpen(false)
   };
+
+  const handleSend= async()=>
+  {
+    if(text==="") return;
+
+    try{
+await updateDoc(doc(db,"chats",chatId),{
+messages:arrayUnion({
+  senderId:currentUser.id,
+  text,
+  createdAt:new Date(),
+
+}),
+});
+const userIDs = [currentUser.id,user.id]
+
+userIDs.forEach(async (id)=>{
+
+const userChatsRef=doc(db,"userChats", id);
+const userChatsSnapshot= await getDoc(userChatsRef);
+
+if(userChatsSnapshot.exists())
+{
+  const userChatsData=userChatsSnapshot.data()
+  const chatIndex=userChatsData.chats.findIndex(c=>c.chatId=== chatId)
+
+  userChatsData[chatIndex].lastMessage=text;
+  userChatsData[chatIndex].isSeen=id===currentUser.id?true:false;
+  userChatsData[chatIndex].updatedAt=Date.now();
+
+  await updateDoc(userChatsRef,{
+    chats:userChatsData.chats,
+  });
+} 
+});
+
+    }catch(err)
+    {
+      console.log(err)
+    }
+  }
 
   console.log(text)
 
@@ -38,44 +95,19 @@ const Chat = () => {
         </div>
       </div>
       <div className="center">
-        <div className="message">
+    {  chat?.messages?.map(message=>(
+        <div className="message own" key={message?.createAt}>
             <img src="./avatar.png" alt=""/>
             <div className="texts">
-            <p>m;kdfkndfh;nlsdnhndglndlngdngaobgavoh</p>
-            <span>1 min ago</span>
+              
+            {message.img && <img 
+            src={message.img} alt=""
+            />}
+            <p>{message.text}</p>
+            <span>{/*message*/}</span>
         </div>
         </div>
-
-        <div className="message own">
-            <img src="./avatar.png" alt=""/>
-            <div className="texts">
-            <p>m;kdfkndfh;nlsdnhndglndlngdngaobgavoh</p>
-            <span>1 min ago</span>
-        </div>
-        </div>
-        <div className="message">
-            <img src="./avatar.png" alt=""/>
-            <div className="texts">
-            <p>m;kdfkndfh;nlsdnhndglndlngdngaobgavoh</p>
-            <span>1 min ago</span>
-        </div>
-        </div>
-    
-        <div className="message own">
-            <img src="./avatar.png" alt=""/>
-            <div className="texts">
-            <p>m;kdfkndfh;nlsdnhndglndlngdngaobgavoh</p>
-            <span>1 min ago</span>
-        </div>
-        </div>
-        <div className="message">
-            <img src="./avatar.png" alt=""/>
-            <div className="texts">
-            <img src="https://www.bing.com/images/search?view=detailV2&ccid=%2fGCVhLmC&id=0B6A3D6D6A3096C200F14AB414D3AA2A4A3CA5AD&thid=OIP._GCVhLmCRPm_W4TOyBrIuQHaEK&mediaurl=https%3a%2f%2fwallpaperaccess.com%2ffull%2f155161.jpg&exph=2160&expw=3840&q=cars&simid=608045049260504315&FORM=IRPRST&ck=075CAF597891F73C284623710764F4F9&selectedIndex=3&itb=0&ajaxhist=0&ajaxserp=0"/>
-            <p>m;kdfkndfh;nlsdnhndglndlngdngaobgavoh</p>
-            <span>1 min ago</span>
-        </div>
-        </div>
+))}
         <div ref={endRef}></div>
         </div>
       <div className="bottom">
@@ -104,7 +136,7 @@ const Chat = () => {
         />
         </div>
        
-        <button className="SendButton">Send</button>
+        <button className="SendButton" onClick={handleSend}>Send</button>
      
     </div>
   );
